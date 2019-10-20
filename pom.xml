@@ -2,28 +2,57 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>cn.taketoday</groupId>
+
     <artifactId>today-method-invoker</artifactId>
+
     <version>0.0.1.RELEASE</version>
+
+    <name>Method Invoker</name>
+
+    <description>Java Byte Code Level Method Invoker.</description>
+
+    <licenses>
+        <license>
+            <name>GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007</name>
+            <url>https://www.gnu.org/licenses/gpl.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <url>https://github.com/TAKETODAY/today-method-invoker</url>
+    <organization>
+        <name>TODAY</name>
+        <url>https://taketoday.cn</url>
+    </organization>
+
+    <developers>
+        <developer>
+            <name>TODAY</name>
+            <url>https://taketoday.cn</url>
+            <email>taketoday@foxmail.com</email>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/TAKETODAY/today-method-invoker.git</url>
+        <developerConnection>TODAY</developerConnection>
+        <tag>method-invoker</tag>
+    </scm>
+
+    <issueManagement>
+        <system>Github Issues</system>
+        <url>https://github.com/TAKETODAY/today-method-invoker/issues</url>
+    </issueManagement>
+
     <dependencies>
 
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.28</version>
-            <scope>provided</scope>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>7.1</version>
         </dependency>
 
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.2.3</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>cn.taketoday</groupId>
-            <artifactId>today-context</artifactId>
-            <version>latest</version>
-        </dependency>
     </dependencies>
+
 </project>
+
