@@ -319,7 +319,7 @@ public abstract class MethodInvokerCreator {
                 mv.visitLdcInsn(Integer.valueOf(i));
             }
             else if (i <= 5) {
-                mv.visitInsn(ICONST(i));
+                mv.visitInsn(iconst(i));
             }
             else if (i <= Byte.MAX_VALUE) {
                 mv.visitIntInsn(Opcodes.BIPUSH, i);
@@ -347,7 +347,10 @@ public abstract class MethodInvokerCreator {
             } //@on
         }
 
-        protected static int ICONST(int value) { //@off
+        /**
+         * ICONST
+         */
+        protected static int iconst(int value) { //@off
             switch (value) {
                 case -1: return Opcodes.ICONST_M1;
                 case 0: return Opcodes.ICONST_0;
@@ -395,7 +398,8 @@ public abstract class MethodInvokerCreator {
             Object unsafe;
             Throwable throwable = null;
             ProtectionDomain protectionDomain;
-            Method defineClass, defineClassUnsafe;
+            Method defineClass;
+            Method defineClassUnsafe;
 
             try {
 
