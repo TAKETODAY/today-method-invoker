@@ -19,28 +19,21 @@
  */
 package cn.taketoday.invoker;
 
-import static cn.taketoday.context.Constant.SOURCE_FILE;
-import static cn.taketoday.context.asm.Opcodes.ACC_FINAL;
-import static cn.taketoday.context.asm.Opcodes.ACC_PUBLIC;
-import static cn.taketoday.context.asm.Opcodes.JAVA_VERSION;
+import static org.objectweb.asm.Opcodes.ACC_FINAL;
+import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
 
-import cn.taketoday.context.Constant;
-import cn.taketoday.context.asm.ClassVisitor;
-import cn.taketoday.context.asm.Type;
-import cn.taketoday.context.cglib.core.ClassEmitter;
-import cn.taketoday.context.cglib.core.ClassGenerator;
-import cn.taketoday.context.cglib.core.CodeEmitter;
-import cn.taketoday.context.cglib.core.CodeGenerationException;
-import cn.taketoday.context.cglib.core.DefaultGeneratorStrategy;
-import cn.taketoday.context.cglib.core.EmitUtils;
-import cn.taketoday.context.cglib.core.GeneratorStrategy;
-import cn.taketoday.context.cglib.core.MethodInfo;
-import cn.taketoday.context.cglib.core.ReflectUtils;
-import cn.taketoday.context.cglib.core.TypeUtils;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 /**
  * @author TODAY <br>
@@ -63,18 +56,52 @@ public abstract class MethodInvokerCreator {
     // MethodInvoker object generator
     // --------------------------------------------------------------
 
-    public static class MethodInvokerGenerator implements ClassGenerator {
+    public static class MethodInvokerGenerator {
 
+        public static final Type TYPE_LONG = Type.getType(Long.class);
+        public static final Type TYPE_BYTE = Type.getType(Byte.class);
+        public static final Type TYPE_FLOAT = Type.getType(Float.class);
+        public static final Type TYPE_SHORT = Type.getType(Short.class);
+        public static final Type TYPE_DOUBLE = Type.getType(Double.class);
+        public static final Type TYPE_BOOLEAN = Type.getType(Boolean.class);
+        public static final Type TYPE_INTEGER = Type.getType(Integer.class);
+        public static final Type TYPE_CHARACTER = Type.getType(Character.class);
+
+        private static final String superType = "cn/taketoday/invoker/MethodInvoker";
+        private static final String[] interfaces = { "cn/taketoday/invoker/Invoker" };
+
+        private static final String invokeDescriptor = "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;";
+
+        public static Type[] getTypes(Class<?>... classes) {
+            if (classes == null) {
+                return null;
+            }
+            Type[] types = new Type[classes.length];
+            for (int i = 0; i < classes.length; i++) {
+                types[i] = Type.getType(classes[i]);
+            }
+            return types;
+        }
+
+        public static String[] toInternalNames(Type[] types) {
+            if (types == null) {
+                return null;
+            }
+            String[] names = new String[types.length];
+            for (int i = 0; i < types.length; i++) {
+                names[i] = types[i].getInternalName();
+            }
+            return names;
+        }
+
+        private String className;
         private Class<?> targetClass;
         private Method targetMethod;
 
-        private String className;
-
-        private GeneratorStrategy strategy = DefaultGeneratorStrategy.INSTANCE;
+        private static final String SOURCE_FILE = "<generated>";
 
         public MethodInvokerGenerator(Method method) {
-            this.targetMethod = method;
-            this.targetClass = method.getDeclaringClass();
+            this(method, method.getDeclaringClass());
         }
 
         public MethodInvokerGenerator(Method method, Class<?> targetClass) {
@@ -83,18 +110,21 @@ public abstract class MethodInvokerCreator {
         }
 
         protected ProtectionDomain getProtectionDomain() {
-            return ReflectUtils.getProtectionDomain(targetClass);
+            return getProtectionDomain(targetClass);
         }
 
         public MethodInvoker create() {
-            final Class<MethodInvoker> generateClass = generateClass();
-            return ReflectUtils.newInstance(generateClass);
+            try {
+                return generateClass().getDeclaredConstructor().newInstance();
+            }
+            catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         protected Class<MethodInvoker> generateClass() {
 
             try {
-
                 final ClassLoader classLoader = targetClass.getClassLoader();
                 if (classLoader == null) {
                     throw new IllegalStateException("ClassLoader is null while trying to define class " + getClassName()
@@ -102,89 +132,297 @@ public abstract class MethodInvokerCreator {
                             + "Please file an issue at cglib's issue tracker.");
                 }
 
-                final byte[] b = strategy.generate(this);
-                final ProtectionDomain protectionDomain = getProtectionDomain();
-                if (protectionDomain == null) {
-                    return ReflectUtils.defineClass(getClassName(), b, classLoader);
-                }
-                return ReflectUtils.defineClass(getClassName(), b, classLoader, protectionDomain);
+                DefaultClassWriter classWriter = new DefaultClassWriter(getClassName());
+                generateClass(classWriter);
+                final byte[] b = classWriter.toByteArray();
+
+                return defineClass(b, getClassName(), classLoader, getProtectionDomain());
             }
             catch (RuntimeException | Error e) {
                 throw e;
             }
             catch (Exception e) {
-                throw new CodeGenerationException(e);
+                throw new InvokerCreateException(e);
             }
         }
 
-        @Override
-        public void generateClass(ClassVisitor v) throws NoSuchMethodException {
+        public static void emptyConstructor(ClassVisitor cv) {
 
-            final ClassEmitter ce = new ClassEmitter(v);
+            MethodVisitor mv = cv.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
 
-            ce.beginClass(JAVA_VERSION, ACC_PUBLIC | ACC_FINAL, //
-                          getClassName(), MethodInvoker.class, SOURCE_FILE, Invoker.class);
+            mv.visitVarInsn(Opcodes.ALOAD, 0);
+            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superType, "<init>", "()V", false);
+            mv.visitInsn(Opcodes.RETURN);
+            mv.visitMaxs(0, 0);
+        }
 
-            final Method invoke = MethodInvoker.class.getDeclaredMethod("invoke", Object.class, Object[].class);
-            final MethodInfo invokeInfo = ReflectUtils.getMethodInfo(invoke);
+        public void generateClass(ClassVisitor cv) throws NoSuchMethodException {
 
-            EmitUtils.nullConstructor(ce);
+            //            final Type methodInvokerType = Type.getType('L' + getClassName().replace('.', '/') + ';');
+            //            cv.visit(Opcodes.V1_8, ACC_PUBLIC | ACC_FINAL, methodInvokerType.getInternalName(), null, superType, interfaces);
+            cv.visit(Opcodes.V1_8, ACC_PUBLIC | ACC_FINAL, getClassName().replace('.', '/'), null, superType, interfaces);
+            cv.visitSource(SOURCE_FILE, null);
 
-            final CodeEmitter codeEmitter = EmitUtils.beginMethod(ce, invokeInfo, ACC_PUBLIC | ACC_FINAL);
+            emptyConstructor(cv);
 
-            if (!Modifier.isStatic(targetMethod.getModifiers())) {
+            MethodVisitor methodVisitor = cv.visitMethod(ACC_PUBLIC | ACC_FINAL, "invoke", invokeDescriptor, null, null);
 
-                codeEmitter.visitVarInsn(Constant.ALOAD, 1);
-                codeEmitter.checkcast(Type.getType(targetClass));
-                // codeEmitter.dup();
+            final int modifiers = targetMethod.getModifiers();
+            if (Modifier.isPrivate(modifiers)) {
+                throw new InvokerCreateException("Can't access to a private method");
+            }
+            if (!Modifier.isStatic(modifiers)) {
+                methodVisitor.visitVarInsn(Opcodes.ALOAD, 1);
+                checkcast(methodVisitor, targetClass);
+                // methodVisitor.visitInsn(Opcodes.DUP);
             }
 
             if (targetMethod.getParameterCount() != 0) {
-                final Class<?>[] parameterTypes = targetMethod.getParameterTypes();
-                for (int i = 0; i < parameterTypes.length; i++) {
-                    codeEmitter.visitVarInsn(Constant.ALOAD, 2);
-                    codeEmitter.aaload(i);
+                resolveParameter(methodVisitor);
+            }
 
-                    Class<?> parameterClass = parameterTypes[i];
-                    final Type parameterType = Type.getType(parameterClass);
-                    if (parameterClass.isPrimitive()) {
-                        final Type boxedType = TypeUtils.getBoxedType(parameterType); // java.lang.Long ...
+            invokeTargetMethod(methodVisitor);
 
-                        codeEmitter.checkcast(boxedType);
-                        final String name = parameterClass.getName() + "Value";
-                        final String descriptor = "()" + parameterType.getDescriptor();
+            returnValue(methodVisitor);
 
-                        codeEmitter.visitMethodInsn(Constant.INVOKEVIRTUAL, boxedType.getInternalName(), name, descriptor, false);
-                    }
-                    else {
-                        codeEmitter.checkcast(parameterType);
-                    }
+            // end method
+            if (!Modifier.isAbstract(modifiers)) {
+                methodVisitor.visitMaxs(0, 0);
+            }
+            cv.visitEnd(); //end class
+        }
+
+        protected void resolveParameter(MethodVisitor methodVisitor) {
+
+            final Class<?>[] parameterTypes = targetMethod.getParameterTypes();
+            for (int i = 0; i < parameterTypes.length; i++) {
+                methodVisitor.visitVarInsn(Opcodes.ALOAD, 2);
+                aaload(methodVisitor, i);
+
+                final Class<?> parameterClass = parameterTypes[i];
+                if (parameterClass.isPrimitive()) {
+                    unbox(methodVisitor, parameterClass);
+                }
+                else {
+                    checkcast(methodVisitor, parameterClass);
                 }
             }
+        }
 
-            final MethodInfo methodInfo = ReflectUtils.getMethodInfo(targetMethod);
-            codeEmitter.invoke(methodInfo);
+        protected void unbox(MethodVisitor methodVisitor, final Class<?> parameterClass) {
+            final Type parameterType = Type.getType(parameterClass);
+            final Type boxedType = getBoxedType(parameterType); // java.lang.Long ...
+
+            checkcast(methodVisitor, boxedType);
+
+            final String name = parameterClass.getName() + "Value";
+            final String desc = "()" + parameterType.getDescriptor();
+
+            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, boxedType.getInternalName(), name, desc, false);
+        }
+
+        protected void returnValue(final MethodVisitor mv) {
 
             if (targetMethod.getReturnType() == void.class) {
-                codeEmitter.aconst_null();
+                mv.visitInsn(Opcodes.ACONST_NULL);
             }
+            mv.visitInsn(Opcodes.ARETURN);
+        }
 
-            codeEmitter.return_value();
-            codeEmitter.end_method();
+        protected void invokeTargetMethod(final MethodVisitor mv) {
 
-            ce.endClass();
+            mv.visitMethodInsn(Modifier.isStatic(targetMethod.getModifiers()) ? Opcodes.INVOKESTATIC : Opcodes.INVOKEVIRTUAL,
+                               Type.getType(targetClass).getInternalName(),
+                               targetMethod.getName(),
+                               Type.getMethodDescriptor(targetMethod), false);
+        }
+
+        protected void checkcast(final MethodVisitor methodVisitor, final Class<?> targetClass) {
+
+            if (!targetClass.equals(Object.class)) {
+                checkcast(methodVisitor, Type.getType(targetClass));
+            }
+        }
+
+        protected void checkcast(final MethodVisitor methodVisitor, final Type type) {
+
+            methodVisitor.visitTypeInsn(Opcodes.CHECKCAST,
+                                        targetClass.isArray() ? type.getDescriptor() : type.getInternalName());
+        }
+
+        protected void push(MethodVisitor mv, int i) {
+            if (i < -1) {
+                mv.visitLdcInsn(Integer.valueOf(i));
+            }
+            else if (i <= 5) {
+                mv.visitInsn(ICONST(i));
+            }
+            else if (i <= Byte.MAX_VALUE) {
+                mv.visitIntInsn(Opcodes.BIPUSH, i);
+            }
+            else if (i <= Short.MAX_VALUE) {
+                mv.visitIntInsn(Opcodes.SIPUSH, i);
+            }
+            else {
+                mv.visitLdcInsn(Integer.valueOf(i));
+            }
+        }
+
+        protected static Type getBoxedType(Type type) {
+
+            switch (type.getSort()) { //@off
+                case Type.CHAR :    return TYPE_CHARACTER;
+                case Type.BOOLEAN : return TYPE_BOOLEAN;
+                case Type.DOUBLE :  return TYPE_DOUBLE;
+                case Type.FLOAT :   return TYPE_FLOAT;
+                case Type.LONG :    return TYPE_LONG;
+                case Type.INT :     return TYPE_INTEGER;
+                case Type.SHORT :   return TYPE_SHORT;
+                case Type.BYTE :    return TYPE_BYTE;
+                default:            return type;
+            } //@on
+        }
+
+        protected static int ICONST(int value) { //@off
+            switch (value) {
+                case -1: return Opcodes.ICONST_M1;
+                case 0: return Opcodes.ICONST_0;
+                case 1: return Opcodes.ICONST_1;
+                case 2: return Opcodes.ICONST_2;
+                case 3: return Opcodes.ICONST_3;
+                case 4: return Opcodes.ICONST_4;
+                case 5: return Opcodes.ICONST_5;
+            }
+            return -1; // error@on
+        }
+
+        protected void aaload(MethodVisitor mv, int index) {
+            push(mv, index);
+            mv.visitInsn(Opcodes.AALOAD);
         }
 
         protected String getClassName() {
             if (className == null) {
-                this.className = new StringBuilder(100).append(targetClass.getName())
-                        .append('$')
-                        .append(System.nanoTime())
-                        .append('$')
-                        .append(targetMethod.getName()).toString();
+                StringBuilder builder = new StringBuilder(targetClass.getName());
+                if (targetMethod.getParameterCount() == 0) {
+                    builder.append('$')
+                            .append(targetMethod.getName())
+                            .append('$');
+                }
+                else {
+                    for (final Class<?> parameterType : targetMethod.getParameterTypes()) {
+                        builder.append('$');
+                        if (parameterType.isArray()) {
+                            builder.append("A$");
+                            final String simpleName = parameterType.getSimpleName();
+                            builder.append(simpleName.substring(0, simpleName.length() - 2));
+                        }
+                        else {
+                            builder.append(parameterType.getSimpleName());
+                        }
+                    }
+                }
+                this.className = builder.toString();
             }
             return className;
         }
-    }
 
+        // loader
+        // ----------------------------------------------------------------
+
+        private static final Object UNSAFE;
+        private static final Throwable THROWABLE;
+        private static Method DEFINE_CLASS, DEFINE_CLASS_UNSAFE;
+        private static final ProtectionDomain PROTECTION_DOMAIN;
+
+        static {
+
+            Object unsafe;
+            Throwable throwable = null;
+            ProtectionDomain protectionDomain;
+            Method defineClass, defineClassUnsafe;
+
+            try {
+
+                protectionDomain = getProtectionDomain(MethodInvokerGenerator.class);
+
+                try {
+                    defineClass = AccessController.doPrivileged((PrivilegedExceptionAction<Method>) () -> {
+                        Method ret = ClassLoader.class.getDeclaredMethod("defineClass",
+                                                                         String.class,
+                                                                         byte[].class,
+                                                                         Integer.TYPE,
+                                                                         Integer.TYPE,
+                                                                         ProtectionDomain.class);
+                        ret.setAccessible(true);
+                        return ret;
+                    });
+                    defineClassUnsafe = null;
+                    unsafe = null;
+                }
+                catch (Throwable t) {
+                    // Fallback on Jigsaw where this method is not available.
+                    throwable = t;
+                    defineClass = null;
+                    unsafe = AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+                        Class<?> u = Class.forName("sun.misc.Unsafe");
+                        Field theUnsafe = u.getDeclaredField("theUnsafe");
+                        theUnsafe.setAccessible(true);
+                        return theUnsafe.get(null);
+                    });
+                    Class<?> u = Class.forName("sun.misc.Unsafe");
+                    defineClassUnsafe = u.getMethod("defineClass",
+                                                    String.class,
+                                                    byte[].class,
+                                                    Integer.TYPE,
+                                                    Integer.TYPE,
+                                                    ClassLoader.class,
+                                                    ProtectionDomain.class);
+                }
+            }
+            catch (Throwable t) {
+                if (throwable == null) throwable = t;
+                defineClass = null;
+                protectionDomain = null;
+                unsafe = defineClassUnsafe = null;
+            }
+            PROTECTION_DOMAIN = protectionDomain;
+            DEFINE_CLASS = defineClass;
+            DEFINE_CLASS_UNSAFE = defineClassUnsafe;
+            UNSAFE = unsafe;
+            THROWABLE = throwable;
+        }
+
+        public static ProtectionDomain getProtectionDomain(final Class<?> source) {
+            return source == null ? null //
+                    : AccessController.doPrivileged((PrivilegedAction<ProtectionDomain>) () -> source.getProtectionDomain());
+        }
+
+        @SuppressWarnings("unchecked")
+        public static <T> Class<T> defineClass(final byte[] b,
+                                               final String className,
+                                               final ClassLoader loader,
+                                               final ProtectionDomain protection) throws Exception//
+        {
+
+            final ProtectionDomain protectionDomainToUse = protection == null ? PROTECTION_DOMAIN : protection;
+
+            final Class<T> c;
+            if (DEFINE_CLASS != null) {
+                Object[] args = new Object[] { className, b, 0, Integer.valueOf(b.length), protectionDomainToUse };
+                c = (Class<T>) DEFINE_CLASS.invoke(loader, args);
+            }
+            else if (DEFINE_CLASS_UNSAFE != null) {
+                Object[] args = new Object[] { className, b, 0, Integer.valueOf(b.length), loader, protectionDomainToUse };
+                c = (Class<T>) DEFINE_CLASS_UNSAFE.invoke(UNSAFE, args);
+            }
+            else {
+                throw new InvokerCreateException(THROWABLE);
+            }
+            // Force static initializers to run.
+            Class.forName(className, true, loader);
+            return c;
+        }
+
+    }
 }
