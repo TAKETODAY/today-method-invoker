@@ -21,6 +21,8 @@ package test.invoker;
 
 import java.lang.reflect.Method;
 
+import org.junit.Test;
+
 import cn.taketoday.invoker.Invoker;
 import cn.taketoday.invoker.MethodInvokerCreator;
 
@@ -30,7 +32,12 @@ import cn.taketoday.invoker.MethodInvokerCreator;
  */
 public class TestHandlerInvoker {
 
-    public static void main(String[] args) throws Exception {
+    @Test
+    public void testAll() throws Exception {
+        main();
+    }
+
+    public static void main(String... args) throws Exception {
 
         System.setProperty("cglib.debugLocation", "D:/debug");
         {
