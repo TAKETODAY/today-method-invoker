@@ -36,14 +36,11 @@ public class TestHandlerInvoker {
         {
             final Method main = Bean.class.getDeclaredMethod("main");
             final Invoker mainInvoker = MethodInvokerCreator.create(main);
-
             mainInvoker.invoke(null, null);
         }
         {
             final Method test = Bean.class.getDeclaredMethod("test", short.class);
-
             final Invoker mainInvoker = MethodInvokerCreator.create(test);
-
             mainInvoker.invoke(null, new Object[] { (short) 1 });
         }
 
@@ -58,21 +55,20 @@ public class TestHandlerInvoker {
 
     public static class Bean {
 
-        public static void test(short i) {
+        public static void test(short i) throws Throwable {
             System.err.println("static main " + i);
         }
 
-        public static void main() {
+        protected static void main() throws Throwable {
             System.err.println("static main");
         }
 
-        public void test() {
+        public void test() throws Throwable {
             System.err.println("instance test");
         }
 
-        public void test(Bean itself) {
+        void test(Bean itself) {
             System.err.println("instance test :" + itself);
         }
-
     }
 }
