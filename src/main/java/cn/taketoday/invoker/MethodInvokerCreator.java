@@ -133,7 +133,7 @@ public abstract class MethodInvokerCreator {
                 return generateClass().getDeclaredConstructor().newInstance();
             }
             catch (ReflectiveOperationException e) {
-                throw new RuntimeException(e);
+                throw new InvokerCreateException(e);
             }
         }
 
