@@ -43,16 +43,37 @@ import org.objectweb.asm.Type;
  */
 public abstract class MethodInvokerCreator {
 
+    /**
+     * Create a {@link MethodInvoker}
+     * 
+     * @param method
+     *            Target method to invoke
+     * @return {@link MethodInvoker} sub object
+     */
+    public static MethodInvoker create(Method mapping) {
+        return new MethodInvokerGenerator(mapping).create();
+    }
+
+    /**
+     * Create a {@link MethodInvoker}
+     * 
+     * @param beanClass
+     *            Bean Class
+     * @param name
+     *            Target method to invoke
+     * @param parameters
+     *            Target parameters classes
+     * @throws NoSuchMethodException
+     *             Thrown when a particular method cannot be found.
+     * 
+     * @return {@link MethodInvoker} sub object
+     */
     public static MethodInvoker create(final Class<?> beanClass,
                                        final String name, final Class<?>... parameterClasses) throws NoSuchMethodException {
 
         final Method targetMethod = beanClass.getDeclaredMethod(name, parameterClasses);
 
         return new MethodInvokerGenerator(targetMethod, beanClass).create();
-    }
-
-    public static MethodInvoker create(Method mapping) {
-        return new MethodInvokerGenerator(mapping).create();
     }
 
     // MethodInvoker object generator
@@ -79,7 +100,8 @@ public abstract class MethodInvokerCreator {
 
         private static final Object UNSAFE;
         private static final Throwable THROWABLE;
-        private static Method DEFINE_CLASS, DEFINE_CLASS_UNSAFE;
+        private static Method DEFINE_CLASS;
+        private static Method DEFINE_CLASS_UNSAFE;
         private static final ProtectionDomain PROTECTION_DOMAIN;
 
         // generator
@@ -334,8 +356,8 @@ public abstract class MethodInvokerCreator {
                 case 3: return Opcodes.ICONST_3;
                 case 4: return Opcodes.ICONST_4;
                 case 5: return Opcodes.ICONST_5;
-            }
-            return -1; // error@on
+                default: return -1;
+            } // error@on
         }
 
         protected void aaload(MethodVisitor mv, int index) {
