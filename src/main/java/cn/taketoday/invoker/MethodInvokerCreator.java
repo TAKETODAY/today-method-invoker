@@ -22,6 +22,7 @@ package cn.taketoday.invoker;
 import static org.objectweb.asm.Opcodes.ACC_FINAL;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -31,6 +32,7 @@ import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
 
 import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -67,38 +69,24 @@ public abstract class MethodInvokerCreator {
         public static final Type TYPE_INTEGER = Type.getType(Integer.class);
         public static final Type TYPE_CHARACTER = Type.getType(Character.class);
 
+        private static final String SOURCE_FILE = "<generated>";
         private static final String superType = "cn/taketoday/invoker/MethodInvoker";
         private static final String[] interfaces = { "cn/taketoday/invoker/Invoker" };
-
         private static final String invokeDescriptor = "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;";
 
-        public static Type[] getTypes(Class<?>... classes) {
-            if (classes == null) {
-                return null;
-            }
-            Type[] types = new Type[classes.length];
-            for (int i = 0; i < classes.length; i++) {
-                types[i] = Type.getType(classes[i]);
-            }
-            return types;
-        }
+        // loader
+        // -----------------------------------------
 
-        public static String[] toInternalNames(Type[] types) {
-            if (types == null) {
-                return null;
-            }
-            String[] names = new String[types.length];
-            for (int i = 0; i < types.length; i++) {
-                names[i] = types[i].getInternalName();
-            }
-            return names;
-        }
+        private static final Object UNSAFE;
+        private static final Throwable THROWABLE;
+        private static Method DEFINE_CLASS, DEFINE_CLASS_UNSAFE;
+        private static final ProtectionDomain PROTECTION_DOMAIN;
 
+        // generator
+        // ------------------------------------------
         private String className;
-        private Class<?> targetClass;
-        private Method targetMethod;
-
-        private static final String SOURCE_FILE = "<generated>";
+        private final Class<?> targetClass;
+        private final Method targetMethod;
 
         public MethodInvokerGenerator(Method method) {
             this(method, method.getDeclaringClass());
@@ -113,6 +101,11 @@ public abstract class MethodInvokerCreator {
             return getProtectionDomain(targetClass);
         }
 
+        /**
+         * Create {@link MethodInvoker} sub object
+         * 
+         * @return {@link MethodInvoker} sub object
+         */
         public MethodInvoker create() {
             try {
                 return generateClass().getDeclaredConstructor().newInstance();
@@ -122,6 +115,11 @@ public abstract class MethodInvokerCreator {
             }
         }
 
+        /**
+         * Generate Class sub class
+         * 
+         * @return {@link MethodInvoker} sub class
+         */
         protected Class<MethodInvoker> generateClass() {
 
             try {
@@ -146,20 +144,8 @@ public abstract class MethodInvokerCreator {
             }
         }
 
-        public static void emptyConstructor(ClassVisitor cv) {
-
-            MethodVisitor mv = cv.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
-
-            mv.visitVarInsn(Opcodes.ALOAD, 0);
-            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superType, "<init>", "()V", false);
-            mv.visitInsn(Opcodes.RETURN);
-            mv.visitMaxs(0, 0);
-        }
-
         public void generateClass(ClassVisitor cv) throws NoSuchMethodException {
 
-            //            final Type methodInvokerType = Type.getType('L' + getClassName().replace('.', '/') + ';');
-            //            cv.visit(Opcodes.V1_8, ACC_PUBLIC | ACC_FINAL, methodInvokerType.getInternalName(), null, superType, interfaces);
             cv.visit(Opcodes.V1_8, ACC_PUBLIC | ACC_FINAL, getClassName().replace('.', '/'), null, superType, interfaces);
             cv.visitSource(SOURCE_FILE, null);
 
@@ -192,6 +178,62 @@ public abstract class MethodInvokerCreator {
             cv.visitEnd(); //end class
         }
 
+        /**
+         * Get sub class name
+         * 
+         * @return sub class name
+         */
+        protected String getClassName() {
+            if (className == null) {
+                StringBuilder builder = new StringBuilder(targetClass.getName());
+                if (targetMethod.getParameterCount() == 0) {
+                    builder.append('$')
+                            .append(targetMethod.getName())
+                            .append('$');
+                }
+                else {
+                    for (final Class<?> parameterType : targetMethod.getParameterTypes()) {
+                        builder.append('$');
+                        if (parameterType.isArray()) {
+                            builder.append("A$");
+                            final String simpleName = parameterType.getSimpleName();
+                            builder.append(simpleName.substring(0, simpleName.length() - 2));
+                        }
+                        else {
+                            builder.append(parameterType.getSimpleName());
+                        }
+                    }
+                }
+                this.className = builder.toString();
+            }
+            return className;
+        }
+
+        // utils
+        // -------------------------------------------------
+
+        /**
+         * create a default {@link Constructor}
+         * 
+         * @param cv
+         *            {@link ClassWriter}
+         */
+        protected static void emptyConstructor(ClassVisitor cv) {
+
+            MethodVisitor mv = cv.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
+
+            mv.visitVarInsn(Opcodes.ALOAD, 0);
+            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superType, "<init>", "()V", false);
+            mv.visitInsn(Opcodes.RETURN);
+            mv.visitMaxs(0, 0);
+        }
+
+        /**
+         * Resolve target method parameters
+         * 
+         * @param methodVisitor
+         *            Target {@link MethodVisitor}
+         */
         protected void resolveParameter(MethodVisitor methodVisitor) {
 
             final Class<?>[] parameterTypes = targetMethod.getParameterTypes();
@@ -301,39 +343,30 @@ public abstract class MethodInvokerCreator {
             mv.visitInsn(Opcodes.AALOAD);
         }
 
-        protected String getClassName() {
-            if (className == null) {
-                StringBuilder builder = new StringBuilder(targetClass.getName());
-                if (targetMethod.getParameterCount() == 0) {
-                    builder.append('$')
-                            .append(targetMethod.getName())
-                            .append('$');
-                }
-                else {
-                    for (final Class<?> parameterType : targetMethod.getParameterTypes()) {
-                        builder.append('$');
-                        if (parameterType.isArray()) {
-                            builder.append("A$");
-                            final String simpleName = parameterType.getSimpleName();
-                            builder.append(simpleName.substring(0, simpleName.length() - 2));
-                        }
-                        else {
-                            builder.append(parameterType.getSimpleName());
-                        }
-                    }
-                }
-                this.className = builder.toString();
+        public static Type[] getTypes(Class<?>... classes) {
+            if (classes == null) {
+                return null;
             }
-            return className;
+            Type[] types = new Type[classes.length];
+            for (int i = 0; i < classes.length; i++) {
+                types[i] = Type.getType(classes[i]);
+            }
+            return types;
+        }
+
+        public static String[] toInternalNames(Type[] types) {
+            if (types == null) {
+                return null;
+            }
+            String[] names = new String[types.length];
+            for (int i = 0; i < types.length; i++) {
+                names[i] = types[i].getInternalName();
+            }
+            return names;
         }
 
         // loader
         // ----------------------------------------------------------------
-
-        private static final Object UNSAFE;
-        private static final Throwable THROWABLE;
-        private static Method DEFINE_CLASS, DEFINE_CLASS_UNSAFE;
-        private static final ProtectionDomain PROTECTION_DOMAIN;
 
         static {
 
