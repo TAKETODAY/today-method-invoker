@@ -289,11 +289,39 @@ public abstract class MethodInvoker implements Invoker {
             methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, boxedType.getInternalName(), name, desc, false);
         }
 
+        /**
+         * If the argument is a primitive class, replaces the primitive value on the top
+         * of the stack with the wrapped (Object) equivalent. For example, char ->
+         * Character. If the class is Void, a null is pushed onto the stack instead.
+         * 
+         * @param inputClass
+         *            the class indicating the current type of the top stack value
+         */
+        public void box(final MethodVisitor mv, Class<?> inputClass) {
+
+            if (inputClass.isPrimitive()) {
+                if (inputClass == Void.TYPE) {
+                    mv.visitInsn(Opcodes.ACONST_NULL);
+                }
+                else {
+                    final Type type = Type.getType(inputClass);
+                    Type boxed = getBoxedType(type);
+
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                       boxed.getInternalName(),
+                                       "valueOf",
+                                       Type.getMethodDescriptor(boxed, new Type[]
+                                       { type }), 
+                                       false);
+
+                }
+            }
+        }
+
         protected void returnValue(final MethodVisitor mv) {
 
-            if (targetMethod.getReturnType() == void.class) {
-                mv.visitInsn(Opcodes.ACONST_NULL);
-            }
+            box(mv, targetMethod.getReturnType());
+
             mv.visitInsn(Opcodes.ARETURN);
         }
 
