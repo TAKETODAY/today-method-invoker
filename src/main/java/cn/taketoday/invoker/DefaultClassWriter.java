@@ -70,12 +70,20 @@ public class DefaultClassWriter extends ClassWriter {
 
             final byte[] ret = super.toByteArray();
 
-            if (debugLocation != null) {
-                String dirs = className.replace('.', File.separatorChar);
-                try {
-                    new File(debugLocation + File.separatorChar + dirs).getParentFile().mkdirs();
+            final String debugLocation = DefaultClassWriter.debugLocation;
 
-                    File file = new File(new File(debugLocation), dirs + ".class");
+            if (debugLocation != null) {
+                final String dirs = className.replace('.', File.separatorChar);
+
+                try {
+                    final String path = new StringBuilder()
+                            .append(debugLocation)
+                            .append(File.separatorChar)
+                            .append(dirs).toString();
+
+                    new File(path).getParentFile().mkdirs();
+
+                    File file = new File(new File(debugLocation), dirs.concat(".class"));
                     OutputStream out = new BufferedOutputStream(new FileOutputStream(file));
                     try {
                         out.write(ret);
@@ -85,7 +93,7 @@ public class DefaultClassWriter extends ClassWriter {
                     }
 
                     if (traceCtor != null) {
-                        file = new File(new File(debugLocation), dirs + ".asm");
+                        file = new File(new File(debugLocation), dirs.concat(".asm"));
                         out = new BufferedOutputStream(new FileOutputStream(file));
                         try {
                             ClassReader cr = new ClassReader(ret);
