@@ -23,7 +23,12 @@ package cn.taketoday.invoker;
  * @author TODAY <br>
  *         2019-10-18 22:35
  */
+@FunctionalInterface
 public interface Invoker {
+
+    default Object invoke() {
+        return invoke(null, null);
+    }
 
     Object invoke(Object obj, Object[] args);
 
