@@ -3,7 +3,7 @@
  * Copyright © TODAY & 2017 - 2020 All Rights Reserved.
  *
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER
- * 
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -13,15 +13,15 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *   
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see [http://www.gnu.org/licenses/]
  */
 package test.invoker;
 
-import java.lang.reflect.Method;
-
 import org.junit.Test;
+
+import java.lang.reflect.Method;
 
 import cn.taketoday.invoker.Invoker;
 import cn.taketoday.invoker.MethodInvoker;
@@ -32,50 +32,50 @@ import cn.taketoday.invoker.MethodInvoker;
  */
 public class TestHandlerInvoker {
 
-    @Test
-    public void testAll() throws Exception {
-        main();
+  @Test
+  public void testAll() throws Exception {
+    main();
+  }
+
+  public static void main(String... args) throws Exception {
+
+    System.setProperty("cglib.debugLocation", "D:/debug");
+    {
+      final Method main = Bean.class.getDeclaredMethod("main");
+      final Invoker mainInvoker = MethodInvoker.create(main);
+      mainInvoker.invoke(null, null);
+    }
+    {
+      final Method test = Bean.class.getDeclaredMethod("test", short.class);
+      final Invoker mainInvoker = MethodInvoker.create(test);
+      mainInvoker.invoke(null, new Object[] { (short) 1 });
     }
 
-    public static void main(String... args) throws Exception {
+    final Invoker create = MethodInvoker.create(Bean.class, "test");
 
-        System.setProperty("cglib.debugLocation", "D:/debug");
-        {
-            final Method main = Bean.class.getDeclaredMethod("main");
-            final Invoker mainInvoker = MethodInvoker.create(main);
-            mainInvoker.invoke(null, null);
-        }
-        {
-            final Method test = Bean.class.getDeclaredMethod("test", short.class);
-            final Invoker mainInvoker = MethodInvoker.create(test);
-            mainInvoker.invoke(null, new Object[] { (short) 1 });
-        }
+    create.invoke(new Bean(), null);
 
-        final Invoker create = MethodInvoker.create(Bean.class, "test");
+    final Invoker itself = MethodInvoker.create(Bean.class, "test", Bean.class);
 
-        create.invoke(new Bean(), null);
+    itself.invoke(new Bean(), new Object[] { new Bean() });
+  }
 
-        final Invoker itself = MethodInvoker.create(Bean.class, "test", Bean.class);
+  public static class Bean {
 
-        itself.invoke(new Bean(), new Object[] { new Bean() });
+    public static void test(short i) throws Throwable {
+      System.err.println("static main " + i);
     }
 
-    public static class Bean {
-
-        public static void test(short i) throws Throwable {
-            System.err.println("static main " + i);
-        }
-
-        protected static void main() throws Throwable {
-            System.err.println("static main");
-        }
-
-        public void test() throws Throwable {
-            System.err.println("instance test");
-        }
-
-        void test(Bean itself) {
-            System.err.println("instance test :" + itself);
-        }
+    protected static void main() throws Throwable {
+      System.err.println("static main");
     }
+
+    public void test() throws Throwable {
+      System.err.println("instance test");
+    }
+
+    void test(Bean itself) {
+      System.err.println("instance test :" + itself);
+    }
+  }
 }

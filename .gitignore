@@ -7,6 +7,9 @@
 *.war
 *.ear
 /target
+/.idea
+.idea
+*.iml
 /.settings
 /.classpath
 /.project
